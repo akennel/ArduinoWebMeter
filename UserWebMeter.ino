@@ -27,24 +27,25 @@
  */
  
 static int meterPin = 9;      
-static int yellowPin = 10;
+static int yellowPin = 12;
 static int redPin = 11;
+static int warnPin = 7;
+static int goodPin = 6;
 static float minimum = 0;     // minimum value for 0% meter
 static float maximum = 255;   // maximum value for 100% meter (this depends on the resistor tollerance)
 static float lightsMaximum = 225; // maximum value for light brightness
 static float units = 1000;    // # of display units
-static int halfWay = units/2;
+static float halfWay = 500;
 int oldValue;
+float oldRedValue;
+float oldYellowValue;
 
 void setup()  {
   //do some fancy init moves with needle
   SetMeter(0, units);
   SetMeter(units, 1);
-  //SetLights(0, units);
-  //SetLights(units, 1);
-  //analogWrite(meterPin, 255);
-  //start serial communication
-  //pinMode(sirenPin, OUTPUT);
+  SetLights(0, units);
+  SetLights(units, 1);
   Serial.begin(9600);
   randomSeed(analogRead(0));
 } //setup
@@ -52,88 +53,102 @@ void setup()  {
 void loop()  {
   //quite simple: read serial data, set meter value
   int meterCount = SerialReadInt();
-  
-  //SetLights( oldValue, meterCount );
+  if (meterCount < 0)
+  {
+    digitalWrite(goodPin, LOW);
+    digitalWrite(warnPin, HIGH);
+    meterCount = meterCount * -1;
+  }
+  else
+  {
+    digitalWrite(warnPin, LOW);
+    digitalWrite(goodPin, HIGH);
+  }
+  Serial.println(meterCount); 
+
   SetMeter( oldValue, meterCount );
-  
+  SetLights( oldValue, meterCount );
   oldValue = meterCount;
 }
 
-void SetLights ( int oldCount, int newCount )
+void SetLights(int oldCount, int meterValue)
 {
-  if (oldCount > newCount)
-  {
-    DecreaseLight(oldCount, newCount);
-  }
-  else
-  {
-    IncreaseLight(oldCount, newCount);
-  }
+	int newYellow = GetYellow(meterValue);
+	int oldYellow = GetYellow(oldCount);
+	int newRed = GetRed(meterValue);
+	int oldRed = GetRed(oldCount);
+
+	if (oldCount < meterValue)
+	{
+		SetColor(newYellow, oldYellow, yellowPin);
+		SetColor(newRed, oldRed, redPin);
+	}
+	else
+	{
+		SetColor(newRed, oldRed, redPin);
+		SetColor(newYellow, oldYellow, yellowPin);
+	}
+	Serial.println(newYellow);
+	Serial.println(newRed);
 }
 
-void DecreaseLight(int oldCount, int newCount)
+void SetColor(int newColor, int oldColor, int pin)
 {
-  if (oldCount > halfWay)
-  {
-    if (newCount > halfWay)
-    {
-      ChangeLight(oldCount, newCount - halfWay, redPin);
-    }
-    else
-    {
-      ChangeLight(oldCount, 1, redPin);
-      ChangeLight(halfWay, newCount, yellowPin);
-    }    
-  }
-  else
-  {
-    ChangeLight(oldCount, newCount, yellowPin);
-  }
+	float newColorLevel = ((newColor / halfWay) * lightsMaximum);
+	float priorColorLevel = ((oldColor / halfWay) * lightsMaximum);
+
+	if (newColorLevel > priorColorLevel)
+	{
+		while (newColorLevel > priorColorLevel)
+		{
+			priorColorLevel++;
+			delay(10);
+			analogWrite(pin, priorColorLevel);
+		}
+	}
+	else
+	{
+		while (newColorLevel < priorColorLevel)
+		{
+			priorColorLevel--;
+			delay(10);
+			analogWrite(pin, priorColorLevel);
+		}
+	}
+  Serial.println(priorColorLevel);
 }
 
-void IncreaseLight(int oldCount, int newCount)
+int GetRed(int newValue)
 {
-  if (oldCount > halfWay)
-  {
-    ChangeLight(oldCount, newCount - halfWay, redPin);
-  }
-  else
-  {
-    if (newCount > halfWay)
-    {
-      ChangeLight(oldCount, halfWay, yellowPin);
-      ChangeLight(1, newCount - halfWay, redPin);
-    }
-    else
-    {
-      ChangeLight(oldCount, newCount, yellowPin);
-    }
-  }
+	int newRed;
+
+	if (newValue > halfWay)
+	{
+		newRed = newValue - halfWay;
+	}
+	else
+	{
+		newRed = 0;
+	}
+
+
+	return newRed;
 }
 
-void ChangeLight(int oldCount, int newCount, int pin)
+int GetYellow(int newValue)
 {
-  float newLevel = ((newCount/halfWay) * lightsMaximum);
-  float oldLevel = ((oldCount/halfWay) * lightsMaximum);
-  
-  if (oldLevel > newLevel)
-  {
-    while (oldLevel > newLevel)
-    {
-      analogWrite(pin, oldLevel);
-      delay(10);
-      oldLevel--;
-    }
-  }
-  else
-  {
-    while (oldLevel < newLevel)
-    {
-      analogWrite(pin, oldLevel);
-      delay(10);
-      oldLevel++;
-    }
-  }
+	int newYellow;
+
+	if (newValue > halfWay)
+	{
+		newYellow = halfWay;
+	}
+	else
+	{
+		newYellow = newValue;
+	}
+
+	return newYellow;
 }
 
 void SetMeter( int oldCount, int meterValue )
